@@ -51,4 +51,3 @@ ls -la /etc/nginx/conf.d/
 nginx -t
 
 echo "[SUCCESS] NGINX configuration valid!"
-echo "[INFO] Stage 3 observability enabled with JSON logging"

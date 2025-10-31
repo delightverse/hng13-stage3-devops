@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Blue Application Service
+  # Blue Application (Primary)
   app_blue:
     image: ${BLUE_IMAGE}
     container_name: app_blue
@@ -14,14 +14,14 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "node -e 'const http=require(\"http\");http.get(\"http://localhost:3000/healthz\", res => { process.exit(res.statusCode===200?0:1) }).on(\"error\", () => process.exit(1))'"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:${PORT:-3000}/healthz"]
       interval: 5s
       timeout: 3s
       retries: 3
       start_period: 10s
     restart: unless-stopped
 
-  # Green Application Service
+  # Green Application (Backup)
   app_green:
     image: ${GREEN_IMAGE}
     container_name: app_green
@@ -34,7 +34,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "node -e 'const http=require(\"http\");http.get(\"http://localhost:3000/healthz\", res => { process.exit(res.statusCode===200?0:1) }).on(\"error\", () => process.exit(1))'"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:${PORT:-3000}/healthz"]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -48,13 +48,8 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./nginx/entrypoint.sh:/docker-entrypoint.d/40-generate-config.sh:ro
-      - ./nginx/remove-symlinks.sh:/docker-entrypoint.d/39-remove-symlinks.sh:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - nginx-logs:/var/log/nginx
-    environment:
-      - ACTIVE_POOL=${ACTIVE_POOL}
-      - APP_PORT=${PORT:-3000}
     networks:
       - app-network
     depends_on:
@@ -64,7 +59,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Alert Watcher Service (Stage 3 - Observability)
+  # Alert Watcher Service
   alert_watcher:
     build:
       context: ./watcher
@@ -72,23 +67,22 @@ services:
     container_name: alert_watcher
     environment:
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
-      - ACTIVE_POOL=${ACTIVE_POOL}
       - ERROR_RATE_THRESHOLD=${ERROR_RATE_THRESHOLD:-2}
       - WINDOW_SIZE=${WINDOW_SIZE:-200}
       - ALERT_COOLDOWN_SEC=${ALERT_COOLDOWN_SEC:-300}
       - MAINTENANCE_MODE=${MAINTENANCE_MODE:-false}
     volumes:
-      - nginx-logs:/logs:ro
+      - nginx-logs:/var/log/nginx:ro
     networks:
       - app-network
     depends_on:
       - nginx
     restart: unless-stopped
 
-volumes:
-  nginx-logs:
-    driver: local
-
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  nginx-logs:
+    driver: local
